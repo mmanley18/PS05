@@ -1,6 +1,6 @@
 ---
 title: "STAT/MATH 495: Problem Set 05"
-author: "WRITE YOUR NAME HERE"
+author: "Meredith, Sara, and Brenna"
 date: "2017-10-11"
 output:
   html_document:
@@ -21,6 +21,7 @@ set.seed(76)
 
 # Load packages
 library(tidyverse)
+require(mosaic)
 
 # Note the relative file path, and not absolute file path:
 train <- read_csv("data/train.csv")
@@ -33,25 +34,142 @@ sample_submission <- read_csv("data/sampleSubmission.csv")
 
 Please indicate who you collaborated with on this assignment:
 
+Meredith, Sara, and Brenna
+
 
 # Exploratory Data Analysis
 
 Information on the competition can be found [here](https://www.kaggle.com/c/bike-sharing-demand).
 
+```{r, echo=FALSE}
+# distribution of count
+ggplot(train, aes(x=count)) + geom_bar() + labs(title = "Distribution of Count")
+
+# take the log of `count` since it had a skewed distribution
+train <- mutate(train, count2=log(count))
+
+#### correlation and scatterplot with each variable
+# `season`
+cor(train$count2, train$season)
+ggplot(train,aes(x =season, y =count2)) +
+  geom_point() +
+  labs(title = "Count by Season")
+
+# `holiday`
+cor(train$count2, train$holiday)
+ggplot(train,aes(x =holiday, y =count2)) +
+  geom_point() +
+  labs(title = "Count by Holiday")
+
+# `workingday`
+cor(train$count2, train$workingday)
+ggplot(train,aes(x =workingday, y =count2)) +
+  geom_point() +
+  labs(title = "Count by Working Day")
+
+# `weather`
+cor(train$count2, train$weather)
+ggplot(train,aes(x =weather, y =count2)) +
+  geom_point() +
+  labs(title="Count by Weather")
+
+# `temp` -- temperature in Celsius
+cor(train$count2, train$temp)
+ggplot(train,aes(x =temp, y =count2)) +
+  geom_point() +
+  labs(title = "Count by Temp")
+
+# `atemp` -- "feels like" temp in Celsius
+cor(train$count2, train$atemp)
+ggplot(train,aes(x =atemp, y =count2)) +
+  geom_point() +
+  labs(title = "Count by atemp")
+
+# `humidity`
+cor(train$count2, train$humidity)
+ggplot(train,aes(x =humidity, y =count2)) +
+  geom_point() +
+  labs(title = "Count by Humidity")
+
+##### high correlation with `temp`, `atemp`, and `humidity`
+
+cor(train$temp, train$atemp)
+# high correlation between `temp` and `atemp` 
+```
+
+> We started off by looking at the distribution of `count` to determine if a transformation would be necessary. Because of the evident right-skewed nature of the distrubution of `count` we decided to use a log-transformation, keeping in mind that we will need to take the exponential form of the log to undo the transformation. Next we looked at the correlation between each variables in the test data set and the count of bikes and observed that `count` had a high correlation with `temp`, `atemp`, and `humidity.` Because `temp` and `atemp` are so similar and are highly correlated with each other it we would only need to include one of them in the final model if necessary. We also created a scatterplot between each variable and the count to look at the assocaition between the two variables. From this exploratory analysis, we then started to develop a list of a possible models that would efficiently capture the signal of this training dataset.
+
+#### Prepare for Model Fit
 ```{r}
+# Store all models in a list
+model <- list()
+model[[1]] <- as.formula("count2 ~ 1")
+model[[2]] <- as.formula("count2 ~ temp")
+model[[3]]<- as.formula("count2 ~ workingday")
+model[[4]] <- as.formula("count2 ~ temp + workingday")
+model[[5]] <- as.formula("count2 ~ temp + workingday + weather")
+model[[6]]<- as.formula("count2 ~ atemp + holiday")
+model[[7]] <- as.formula("count2 ~ atemp + holiday + weather")
+model[[8]] <- as.formula("count2 ~ atemp")
+model[[9]] <- as.formula("count2 ~ windspeed")
+model[[10]] <- as.formula("count2 ~ weather")
+model[[11]] <- as.formula("count2 ~ humidity")
+model[[12]] <- as.formula("count2 ~ windspeed + workingday + holiday")
+model[[13]] <- as.formula("count2 ~ windspeed + workingday + weather")
+model[[14]] <- as.formula("count2 ~ windspeed + weather + atemp")
+model[[15]] <- as.formula("count2 ~ windspeed + weather + temp")
+model[[16]] <- as.formula("count2 ~ humidity + weather + temp")
+model[[17]] <- as.formula("count2 ~ humidity + weather + atemp")
+model[[18]] <- as.formula("count2 ~ workingday + weather + atemp")
+model[[19]] <- as.formula("count2 ~ workingday + humidity + temp")
+model[[20]] <- as.formula("count2 ~ workingday + humidity + atemp")
+
+# simple function for RMSE
+RMSE <- function(x) {
+  r <- sqrt(mean(x^2))
+  return(r)
+}
 
 ```
 
+> The 20 models above will be input into the function below to look at the RMSE and will allow us to select which model to proceed with based on the lowest RMSE value.
 
 # Model Fit
 
 ```{r}
+RMSE_test <- runif(n=length(model))
+f <- function(list)  {
+  for (i in 1:length(model)) { # predict and calcualte RMSE for all 7 models
+    RMSE_test[i] <- RMSE(exp(predict(lm(list[[i]],data=train),test)) - exp(train$count2)) # Store test RMSE
+  }
+  return(RMSE_test) # return data frame
+}
+results <- f(model) 
 
+# lowest RMSE 
+RMSE(exp(predict(lm(model[[12]],data=train),test)) - exp(train$count2))
+
+m <- lm(model[[12]], data=train)
+summary(m)
+# `holiday` and `workingday` are not signficant given an alpha of 0.01, but when we look at 
+# model14 all variables are significant and produce a count that appears to be a better fit
+# to the training data
+
+test$count <- round(exp(predict(lm(model[[12]],data=train),test)))
+test$count <- replace(test$count,test$count < 0 , 0)
+
+sub <- test %>% select(datetime,count)
+sub$datetime <- as.character(sub$datetime)
 ```
 
+> We found that the model that generated the lowest RMSE was that which used the variables `holiday`, `workingday`, and `windspeed.` However, one point of caution for this model is that `holiday` and `workingday` are not significant given an alpha of 0.01. And yet all variables for model14, which has a higher RMSE, are significant given an alpha of 0.01. Additionally, when we looked at the distribution of `count` in the training set compared with the predictions based on model12 and model14, we observed that the distribution of model14's predictions matched more closely to the training data than model12. We will submit results based on model12, but plan to discuss these results with Albert in office hours.
 
 # Create Submission File
 
 ```{r}
-
+write_csv(sub,"submission.csv")
 ```
+
+
+
+
